@@ -5,74 +5,84 @@ import {
   CircleDot,
   Clock3,
   Lock,
-  MoveRight,
+  PanelRight,
   RefreshCw,
+  ShieldCheck,
   UserRound,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import type { TaskRow, TaskStatus } from "@/components/types";
+import { Badge } from "@/components/ui/Badge";
+import { Card, CardHeader } from "@/components/ui/Card";
+import { SectionHeader } from "@/components/ui/SectionHeader";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { StatusDropdown } from "@/components/ui/StatusDropdown";
+import { cn } from "@/lib/cn";
+import type { TaskRow, TaskStatus } from "@/lib/data";
+import {
+  getStatusCounts,
+  STATUS_ACCENT_STYLES,
+  STATUS_LABELS,
+  TASK_STATUSES,
+} from "@/lib/task-status";
 
 type Role = "annotator" | "client";
 
 const CURRENT_ANNOTATOR = "u_annotator";
 const CURRENT_CLIENT = "c1";
 
-const statusLabels: Record<TaskStatus, string> = {
-  pending: "Pending",
-  in_progress: "In progress",
-  done: "Done",
-};
+const roleOptions = [
+  {
+    value: "annotator" as const,
+    label: "Annotator",
+    icon: <UserRound className="h-4 w-4" aria-hidden="true" />,
+  },
+  {
+    value: "client" as const,
+    label: "Client",
+    icon: <Lock className="h-4 w-4" aria-hidden="true" />,
+  },
+];
 
-const statusStyles: Record<TaskStatus, string> = {
-  pending: "bg-coral/10 text-coral",
-  in_progress: "bg-gold/15 text-ink",
-  done: "bg-moss/12 text-moss",
-};
-
-const nextStatus: Record<TaskStatus, TaskStatus> = {
-  pending: "in_progress",
-  in_progress: "done",
-  done: "done",
-};
-
-export default function TaskBoard() {
+export default function TaskBoard({ initialTasks }: { initialTasks?: TaskRow[] }) {
   const [role, setRole] = useState<Role>("annotator");
-  const [tasks, setTasks] = useState<TaskRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [tasks, setTasks] = useState<TaskRow[]>(initialTasks ?? []);
+  const [loading, setLoading] = useState(!initialTasks);
   const [savingId, setSavingId] = useState<string | null>(null);
 
   useEffect(() => {
+    if (initialTasks) return;
     loadTasks();
-  }, []);
+  }, [initialTasks]);
 
   async function loadTasks() {
     setLoading(true);
-    const response = await fetch("/api/tasks");
-    const data = (await response.json()) as TaskRow[];
-    setTasks(data);
-    setLoading(false);
+    try {
+      const response = await fetch("/api/tasks");
+      if (!response.ok) return;
+      const data = (await response.json()) as TaskRow[];
+      setTasks(data);
+    } finally {
+      setLoading(false);
+    }
   }
 
-  async function advanceTask(task: TaskRow) {
-    const status = nextStatus[task.status];
-    if (status === task.status) return;
+  async function updateTaskStatus(taskId: string, status: TaskStatus) {
+    setSavingId(taskId);
+    try {
+      const response = await fetch(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
 
-    setSavingId(task.id);
-    const response = await fetch(`/api/tasks/${task.id}`, {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ status }),
-    });
-
-    if (response.ok) {
-      setTasks((current) =>
-        current.map((item) => (item.id === task.id ? { ...item, status } : item)),
-      );
+      if (response.ok) {
+        setTasks((current) =>
+          current.map((item) => (item.id === taskId ? { ...item, status } : item)),
+        );
+      }
+    } finally {
+      setSavingId(null);
     }
-
-    setSavingId(null);
   }
 
   const annotatorTasks = useMemo(
@@ -86,48 +96,26 @@ export default function TaskBoard() {
   );
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h2 className="text-2xl font-semibold text-ink">Task Board</h2>
-          <p className="mt-1 text-sm text-ink/65">
-            Switch roles to compare editable annotation work with a read-only
-            client summary.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-2 rounded-lg border border-ink/10 bg-white p-1 shadow-sm">
-          <button
-            className={`flex min-h-10 items-center justify-center gap-2 rounded-md px-4 text-sm font-semibold transition ${
-              role === "annotator"
-                ? "bg-ink text-white"
-                : "text-ink/70 hover:bg-field"
-            }`}
-            type="button"
-            onClick={() => setRole("annotator")}
-          >
-            <UserRound className="h-4 w-4" aria-hidden="true" />
-            Annotator
-          </button>
-          <button
-            className={`flex min-h-10 items-center justify-center gap-2 rounded-md px-4 text-sm font-semibold transition ${
-              role === "client" ? "bg-ink text-white" : "text-ink/70 hover:bg-field"
-            }`}
-            type="button"
-            onClick={() => setRole("client")}
-          >
-            <Lock className="h-4 w-4" aria-hidden="true" />
-            Client
-          </button>
-        </div>
-      </div>
+    <div className="space-y-6">
+      <SectionHeader
+        title="Tasks"
+        description="View and update annotation task status."
+        action={
+          <SegmentedControl
+            options={roleOptions}
+            value={role}
+            onChange={setRole}
+            aria-label="Switch between annotator and client view"
+          />
+        }
+      />
 
       {role === "annotator" ? (
         <AnnotatorView
           tasks={annotatorTasks}
           loading={loading}
           savingId={savingId}
-          onAdvance={advanceTask}
+          onStatusChange={updateTaskStatus}
           onRefresh={loadTasks}
         />
       ) : (
@@ -141,83 +129,80 @@ function AnnotatorView({
   tasks,
   loading,
   savingId,
-  onAdvance,
+  onStatusChange,
   onRefresh,
 }: {
   tasks: TaskRow[];
   loading: boolean;
   savingId: string | null;
-  onAdvance: (task: TaskRow) => void;
+  onStatusChange: (taskId: string, status: TaskStatus) => void;
   onRefresh: () => void;
 }) {
+  const counts = useMemo(() => getStatusCounts(tasks), [tasks]);
+
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 rounded-lg border border-ink/10 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="text-sm font-semibold text-ink">
-            Assigned to `u_annotator`
-          </p>
-          <p className="mt-1 text-sm text-ink/60">
-            Move each task forward through pending, in progress, and done.
-          </p>
-        </div>
-        <button
-          className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-ink/10 px-4 text-sm font-semibold text-ink/70 transition hover:bg-field"
-          type="button"
-          onClick={onRefresh}
-        >
-          <RefreshCw className="h-4 w-4" aria-hidden="true" />
-          Refresh
-        </button>
+    <div className="space-y-5">
+      <div className="grid gap-3 sm:grid-cols-3">
+        {TASK_STATUSES.map((status) => (
+          <StatusCountCard key={status} status={status} count={counts[status]} />
+        ))}
       </div>
 
-      <div className="grid gap-3">
-        {loading ? (
-          <div className="rounded-lg border border-ink/10 bg-white p-6 text-sm text-ink/60">
-            Loading assigned tasks...
+      <Card variant="elevated" padding="none" className="overflow-hidden">
+        <CardHeader>
+          <div>
+            <h3 className="font-bold text-ink">Assigned tasks</h3>
+            <p className="mt-1 text-sm text-ink/55">{tasks.length} tasks in queue</p>
           </div>
+          <button
+            type="button"
+            className="inline-flex min-h-9 items-center justify-center gap-2 rounded-xl border border-ink/10 bg-white px-3.5 text-sm font-semibold text-ink/70 shadow-sm transition hover:border-accent/20 hover:bg-field hover:text-ink"
+            onClick={onRefresh}
+          >
+            <RefreshCw className="h-4 w-4" aria-hidden="true" />
+            Refresh
+          </button>
+        </CardHeader>
+
+        {loading ? (
+          <div className="p-8 text-center text-sm text-ink/55">Loading assigned tasks…</div>
+        ) : tasks.length === 0 ? (
+          <div className="p-8 text-center text-sm text-ink/55">No tasks in your queue.</div>
         ) : (
-          tasks.map((task) => (
-            <article
-              key={task.id}
-              className="grid gap-4 rounded-lg border border-ink/10 bg-white p-4 shadow-sm md:grid-cols-[1fr_auto] md:items-center"
-            >
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-base font-semibold text-ink">{task.title}</h3>
-                  <StatusBadge status={task.status} />
-                </div>
-                <p className="mt-2 text-sm text-ink/60">{task.projectName}</p>
-              </div>
-              <button
-                className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-moss px-4 text-sm font-semibold text-white transition hover:bg-moss/90 disabled:cursor-not-allowed disabled:bg-ink/20"
-                type="button"
-                disabled={task.status === "done" || savingId === task.id}
-                onClick={() => onAdvance(task)}
+          <div className="divide-y divide-ink/8">
+            {tasks.map((task) => (
+              <article
+                key={task.id}
+                className="grid gap-4 px-5 py-4 transition duration-150 hover:bg-accent/[0.03] md:grid-cols-[1fr_auto] md:items-center"
               >
-                {task.status === "done" ? "Complete" : statusLabels[nextStatus[task.status]]}
-                <MoveRight className="h-4 w-4" aria-hidden="true" />
-              </button>
-            </article>
-          ))
+                <div className="min-w-0">
+                  <h3 className="text-base font-semibold text-ink">{task.title}</h3>
+                  <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-ink/55">
+                    <span>{task.projectName}</span>
+                    <span className="h-1 w-1 rounded-full bg-ink/25" aria-hidden="true" />
+                    <span className="font-mono text-xs">{task.id}</span>
+                  </div>
+                </div>
+                <StatusDropdown
+                  value={task.status}
+                  saving={savingId === task.id}
+                  ariaLabel={`Status for ${task.title}`}
+                  onChange={(status) => {
+                    if (status !== task.status) onStatusChange(task.id, status);
+                  }}
+                />
+              </article>
+            ))}
+          </div>
         )}
-      </div>
+      </Card>
     </div>
   );
 }
 
 function ClientView({ tasks, loading }: { tasks: TaskRow[]; loading: boolean }) {
   const summary = useMemo(() => {
-    const counts = {
-      pending: 0,
-      in_progress: 0,
-      done: 0,
-    } satisfies Record<TaskStatus, number>;
-
-    for (const task of tasks) {
-      counts[task.status] += 1;
-    }
-
+    const counts = getStatusCounts(tasks);
     const total = tasks.length;
     const progress = total === 0 ? 0 : Math.round((counts.done / total) * 100);
     const projects = Array.from(
@@ -234,92 +219,181 @@ function ClientView({ tasks, loading }: { tasks: TaskRow[]; loading: boolean }) 
 
   if (loading) {
     return (
-      <div className="rounded-lg border border-ink/10 bg-white p-6 text-sm text-ink/60">
-        Loading client summary...
-      </div>
+      <Card padding="md" className="text-center text-sm text-ink/55">
+        Loading client summary…
+      </Card>
     );
   }
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
-        <section className="rounded-lg border border-ink/10 bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm font-semibold text-ink/60">Project Atlas</p>
-              <h3 className="mt-1 text-2xl font-semibold text-ink">
-                {summary.progress}% complete
-              </h3>
-            </div>
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-moss/12 text-lg font-semibold text-moss">
-              {summary.counts.done}/{summary.total}
-            </div>
-          </div>
-          <div className="mt-5 h-3 overflow-hidden rounded-full bg-field">
-            <div
-              className="h-full rounded-full bg-moss transition-all"
-              style={{ width: `${summary.progress}%` }}
-            />
-          </div>
-        </section>
+      <div className="flex flex-col gap-4">
+        <ClientOverviewCard
+          progress={summary.progress}
+          done={summary.counts.done}
+          total={summary.total}
+          remaining={summary.total - summary.counts.done}
+        />
 
-        <section className="grid grid-cols-3 gap-3">
-          {(["pending", "in_progress", "done"] as TaskStatus[]).map((status) => (
-            <div
-              key={status}
-              className="rounded-lg border border-ink/10 bg-white p-4 shadow-sm"
-            >
-              <StatusIcon status={status} />
-              <p className="mt-3 text-2xl font-semibold text-ink">
-                {summary.counts[status]}
-              </p>
-              <p className="mt-1 text-xs font-semibold uppercase text-ink/55">
-                {statusLabels[status]}
-              </p>
-            </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {TASK_STATUSES.map((status) => (
+            <StatusCountCard key={status} status={status} count={summary.counts[status]} />
           ))}
-        </section>
+        </div>
       </div>
 
-      <section className="overflow-hidden rounded-lg border border-ink/10 bg-white shadow-soft">
-        <div className="border-b border-ink/10 bg-field px-5 py-4">
-          <h3 className="font-semibold text-ink">Read-only project tasks</h3>
-        </div>
-        <div className="divide-y divide-ink/10">
+      <Card variant="elevated" padding="none" className="overflow-hidden">
+        <CardHeader>
+          <div>
+            <h3 className="font-bold text-ink">Project task summary</h3>
+            <p className="mt-1 text-sm text-ink/55">Actions are disabled for clients.</p>
+          </div>
+          <Badge variant="default" className="gap-1.5">
+            <PanelRight className="h-3.5 w-3.5" aria-hidden="true" />
+            Read only
+          </Badge>
+        </CardHeader>
+
+        <div className="divide-y divide-ink/8">
           {summary.projects.map(([projectName, rows]) => (
             <div key={projectName} className="p-5">
-              <h4 className="font-semibold text-ink">{projectName}</h4>
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <h4 className="font-semibold text-ink">{projectName}</h4>
+                <span className="text-sm text-ink/55">{rows.length} tasks</span>
+              </div>
               <div className="mt-3 grid gap-2">
                 {rows.map((task) => (
                   <div
                     key={task.id}
-                    className="flex flex-col gap-2 rounded-md bg-mist px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+                    className="grid gap-2 rounded-xl border border-ink/8 bg-field/50 px-4 py-3 transition hover:border-accent/15 hover:bg-white sm:grid-cols-[1fr_auto] sm:items-center"
                   >
-                    <div>
-                      <p className="text-sm font-semibold text-ink">{task.title}</p>
-                      <p className="mt-1 text-xs text-ink/55">
-                        {task.assignedTo ?? "Unassigned"}
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-ink">{task.title}</p>
+                      <p className="mt-0.5 text-xs text-ink/50">
+                        {task.assignedTo ?? "Unassigned"} · {task.id}
                       </p>
                     </div>
-                    <StatusBadge status={task.status} />
+                    <StatusDropdown
+                      value={task.status}
+                      disabled
+                      ariaLabel={`Status for ${task.title}`}
+                    />
                   </div>
                 ))}
               </div>
             </div>
           ))}
         </div>
-      </section>
+      </Card>
     </div>
   );
 }
 
-function StatusBadge({ status }: { status: TaskStatus }) {
+function ClientOverviewCard({
+  progress,
+  done,
+  total,
+  remaining,
+}: {
+  progress: number;
+  done: number;
+  total: number;
+  remaining: number;
+}) {
+  const size = 112;
+  const stroke = 8;
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (progress / 100) * circumference;
+
   return (
-    <span
-      className={`inline-flex w-fit items-center rounded-md px-2.5 py-1 text-xs font-semibold ${statusStyles[status]}`}
+    <Card className="relative overflow-hidden border-accent/15 bg-gradient-to-br from-white via-white to-accent/[0.05] p-0">
+      <div
+        className="pointer-events-none absolute -right-10 -top-10 h-36 w-36 rounded-full bg-violet/12 blur-3xl"
+        aria-hidden="true"
+      />
+
+      <div className="relative flex flex-col gap-5 p-5 sm:flex-row sm:items-center sm:gap-8 sm:p-6">
+        <div
+          className="relative mx-auto shrink-0 sm:mx-0"
+          style={{ width: size, height: size }}
+          role="img"
+          aria-label={`${progress}% complete, ${done} of ${total} tasks done`}
+        >
+          <svg width={size} height={size} className="-rotate-90" aria-hidden="true">
+            <circle
+              cx={size / 2}
+              cy={size / 2}
+              r={radius}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={stroke}
+              className="text-field"
+            />
+            <circle
+              cx={size / 2}
+              cy={size / 2}
+              r={radius}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={stroke}
+              strokeLinecap="round"
+              strokeDasharray={circumference}
+              strokeDashoffset={offset}
+              className="text-accent transition-all duration-700"
+            />
+          </svg>
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <span className="text-2xl font-extrabold tracking-tight text-ink">{progress}%</span>
+          </div>
+        </div>
+
+        <div className="min-w-0 flex-1 text-center sm:text-left">
+          <div className="inline-flex items-center gap-2 rounded-full bg-accent/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-accent">
+            <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
+            Client overview
+          </div>
+          <p className="mt-3 text-xl font-bold text-ink sm:text-2xl">
+            {done} of {total} tasks complete
+          </p>
+          <p className="mt-1.5 text-sm text-ink/55">
+            Project Atlas · client <span className="font-mono text-xs">c1</span>
+            {remaining > 0 ? (
+              <span className="text-ink/40"> · {remaining} remaining</span>
+            ) : null}
+          </p>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function StatusCountCard({ status, count }: { status: TaskStatus; count: number }) {
+  const accent = STATUS_ACCENT_STYLES[status];
+
+  return (
+    <section
+      className={cn(
+        "flex items-center gap-3 rounded-xl border border-ink/10 border-l-4 bg-gradient-to-r p-4 shadow-sm",
+        accent.border,
+        accent.bg,
+      )}
     >
-      {statusLabels[status]}
-    </span>
+      <span
+        className={cn(
+          "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
+          accent.icon,
+        )}
+      >
+        <StatusIcon status={status} />
+      </span>
+      <div className="min-w-0">
+        <p className="text-xl font-bold leading-none text-ink">{count}</p>
+        <p className="mt-1 text-xs font-semibold uppercase tracking-[0.12em] text-ink/45">
+          {STATUS_LABELS[status]}
+        </p>
+      </div>
+    </section>
   );
 }
 
@@ -327,12 +401,10 @@ function StatusIcon({ status }: { status: TaskStatus }) {
   const iconClass = "h-5 w-5";
 
   if (status === "done") {
-    return <CheckCircle2 className={`${iconClass} text-moss`} aria-hidden="true" />;
+    return <CheckCircle2 className={cn(iconClass, "text-accent")} aria-hidden="true" />;
   }
-
   if (status === "in_progress") {
-    return <Clock3 className={`${iconClass} text-gold`} aria-hidden="true" />;
+    return <Clock3 className={cn(iconClass, "text-gold")} aria-hidden="true" />;
   }
-
-  return <CircleDot className={`${iconClass} text-coral`} aria-hidden="true" />;
+  return <CircleDot className={cn(iconClass, "text-coral")} aria-hidden="true" />;
 }

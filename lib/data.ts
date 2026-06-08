@@ -21,7 +21,6 @@ export type TaskRow = {
   clientId: string;
   assignedTo: string | null;
   status: TaskStatus;
-  originalStatus?: string;
 };
 
 type RawModel = Omit<ModelRow, "name" | "provider"> & {
@@ -36,7 +35,6 @@ type RawTask = Omit<TaskRow, "status"> & {
 const dataDir = path.join(process.cwd(), "data");
 const modelsPath = path.join(dataDir, "models.json");
 const tasksPath = path.join(dataDir, "tasks.json");
-const statusOrder: TaskStatus[] = ["pending", "in_progress", "done"];
 
 function titleCase(value: string) {
   return value
@@ -67,11 +65,6 @@ function normalizeStatus(value: string | null): TaskStatus {
   return "pending";
 }
 
-export function getNextStatus(status: TaskStatus) {
-  const index = statusOrder.indexOf(status);
-  return statusOrder[Math.min(index + 1, statusOrder.length - 1)];
-}
-
 export async function readModels(): Promise<ModelRow[]> {
   const content = await fs.readFile(modelsPath, "utf8");
   const rows = JSON.parse(content) as RawModel[];
@@ -99,7 +92,6 @@ export async function readTasks(): Promise<TaskRow[]> {
     clientId: task.clientId,
     assignedTo: task.assignedTo,
     status: normalizeStatus(task.status),
-    originalStatus: task.status || undefined,
   }));
 }
 

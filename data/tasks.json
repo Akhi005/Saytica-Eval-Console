@@ -6,7 +6,7 @@
     "projectName": "Project Atlas",
     "clientId": "c1",
     "assignedTo": "u_annotator",
-    "status": "done"
+    "status": "in_progress"
   },
   {
     "id": "t2",
@@ -15,7 +15,7 @@
     "projectName": "Project Atlas",
     "clientId": "c1",
     "assignedTo": "u_annotator",
-    "status": "in_progress"
+    "status": "done"
   },
   {
     "id": "t3",
@@ -24,7 +24,7 @@
     "projectName": "Project Atlas",
     "clientId": "c1",
     "assignedTo": "u_annotator",
-    "status": "pending"
+    "status": "done"
   },
   {
     "id": "t4",
@@ -51,7 +51,7 @@
     "projectName": "Project Atlas",
     "clientId": "c1",
     "assignedTo": "u_annotator",
-    "status": "in_progress"
+    "status": "done"
   },
   {
     "id": "t7",
@@ -78,7 +78,7 @@
     "projectName": "Project Beta",
     "clientId": "c2",
     "assignedTo": "u_annotator",
-    "status": "pending"
+    "status": "done"
   },
   {
     "id": "t10",
@@ -87,7 +87,7 @@
     "projectName": "Project Beta",
     "clientId": "c2",
     "assignedTo": "u_annotator",
-    "status": "pending"
+    "status": "done"
   },
   {
     "id": "t11",
