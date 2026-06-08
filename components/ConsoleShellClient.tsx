@@ -3,7 +3,7 @@
 import { ClipboardList, Layers, ShieldCheck } from "lucide-react";
 import { ActiveView, viewOptions } from "@/components/constants";
 import { useState } from "react";
-import ModelLeaderboard from "@/components/ModelLeaderboard";
+import ModelLeaderboard from "@/components/features/ModelLeaderboard";
 import TaskBoard from "@/components/TaskBoard";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import type { ModelRow, TaskRow } from "@/components/types";
