@@ -25,4 +25,6 @@ Open `http://localhost:3000`.
 - Mixed date formats are parsed when possible.
 - Empty task statuses are treated as `pending`.
 - Unassigned tasks are preserved and shown as `Unassigned` in client summaries.
-# Saytica-Eval-Console
+
+> **Note:** Task status updates require a writable filesystem and work locally. 
+> A database integration (e.g. Vercel KV or Neon) would be needed for production.
